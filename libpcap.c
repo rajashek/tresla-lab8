@@ -415,6 +415,38 @@ print_payload(const u_char *payload, int len)
 return;
 }
 
+u_short ip_checksum(u_short *ptr,int nbytes) {
+    // Create Checksum of IP header (Modified version)
+    // original: http://www.binarytides.com/raw-udp-sockets-c-linux/
+    //
+
+    
+    
+    long sum;
+    u_short oddbyte = 0;
+    short answer = 0;
+    
+    sum=0;
+    while(nbytes>1) {
+        
+        printf("%.4x\n", ntohs(*(ptr)));
+        
+        sum+=ntohs(*ptr++);
+        nbytes-=2;
+    }
+    if(nbytes==1) {
+        oddbyte=0;
+        *((u_char*)&oddbyte)=*(u_char*)ptr;
+        sum+=oddbyte;
+    }
+    
+    sum = (sum>>16)+(sum & 0xffff);
+    sum = sum + (sum>>16);
+    answer=htons((u_short)~sum);
+    
+    return answer;
+}
+
 /*
  * dissect/print packet
  */
@@ -426,7 +458,7 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	
 	/* declare pointers to packet headers */
 	struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
-	const struct sniff_ip *ip;              /* The IP header */
+	struct sniff_ip *ip;              /* The IP header */
 	const struct sniff_tcp *tcp;            /* The TCP header */
 	const char *payload;                    /* Packet payload */
 
@@ -451,7 +483,13 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	/* print source and destination IP addresses */
 	printf("       From: %s\n", inet_ntoa(ip->ip_src));
 	printf("         To: %s\n", inet_ntoa(ip->ip_dst));
-	printf("	Source Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ethernet->ether_shost[0],
+    ethernet->ether_shost[0]=0x00;
+    ethernet->ether_shost[1]=0x15;
+    ethernet->ether_shost[2]=0x17;
+    ethernet->ether_shost[3]=0x5d;
+    ethernet->ether_shost[4]=0x27;
+    ethernet->ether_shost[5]=0xe9;
+	printf("	 Modified Source Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ethernet->ether_shost[0],
 									(unsigned char)ethernet->ether_shost[1],
 									(unsigned char)ethernet->ether_shost[2],
 									(unsigned char)ethernet->ether_shost[3],
@@ -462,64 +500,23 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	ethernet->ether_dhost[1]=0x15;
 	ethernet->ether_dhost[2]=0x17;
 	ethernet->ether_dhost[3]=0x5d;
-	ethernet->ether_dhost[4]=0x27;
-	ethernet->ether_dhost[5]=0xe9;
-	printf("        Destination Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ethernet->ether_dhost[0],
+	ethernet->ether_dhost[4]=0x29;
+	ethernet->ether_dhost[5]=0xe5;
+	printf("         Modified Destination Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ethernet->ether_dhost[0],
                                                                         (unsigned char)ethernet->ether_dhost[1],
                                                                         (unsigned char)ethernet->ether_dhost[2],
                                                                         (unsigned char)ethernet->ether_dhost[3],
                                                                         (unsigned char)ethernet->ether_dhost[4],
                                                                         (unsigned char)ethernet->ether_dhost[5]);
-	
-	/* determine protocol */	
-	switch(ip->ip_p) {
-		case IPPROTO_TCP:
-			printf("   Protocol: TCP\n");
-			break;
-		case IPPROTO_UDP:
-			printf("   Protocol: UDP\n");
-			break;
-		case IPPROTO_ICMP:
-			printf("   Protocol: ICMP\n");
-			break;
-		case IPPROTO_IP:
-			printf("   Protocol: IP\n");
-			break;
-		default:
-			printf("   Protocol: unknown\n");
-			break;
-	}
-	
-	/*
-	 *  OK, this packet is TCP.
-	 */
-	
-	/* define/compute tcp header offset */
-	tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
-	size_tcp = TH_OFF(tcp)*4;
-	if (size_tcp < 20) {
-		printf("   * Invalid TCP header length: %u bytes\n", size_tcp);
-		return;
-	}
-	
-	printf("   Src port: %d\n", ntohs(tcp->th_sport));
-	printf("   Dst port: %d\n", ntohs(tcp->th_dport));
-	
-	/* define/compute tcp payload (segment) offset */
-	payload = (u_char *)(packet + SIZE_ETHERNET + size_ip + size_tcp);
-	
-	/* compute tcp payload (segment) size */
-	size_payload = ntohs(ip->ip_len) - (size_ip + size_tcp);
-	
-	/*
-	 * Print payload data; it might be binary, so don't just
-	 * treat it as a string.
-	 */
-	if (size_payload > 0) {
-		printf("   Payload (%d bytes):\n", size_payload);
-		print_payload(payload, size_payload);
-	}
-	int fd=socket(PF_PACKET,SOCK_RAW,htons(ETH_P_ALL));	
+
+    // Decrease TTL
+    ip->ip_ttl = ip->ip_ttl-1;
+    ip->ip_sum = 0;
+    ip->ip_sum = ip_checksum((u_short *) (packet + SIZE_ETHERNET), sizeof(struct sniff_ip));
+
+    
+    
+	int fd=socket(PF_PACKET, SOCK_RAW, htons(ETH_P_802_3));
 	if (fd==-1) {
     		printf("%s",strerror(errno));
 	}
@@ -533,18 +530,22 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	addr.sll_family=PF_PACKET;
 	addr.sll_ifindex=ifindex;
 	addr.sll_halen=ETHER_ADDR_LEN;
-	addr.sll_protocol=htons(ETH_P_ALL);
+	addr.sll_protocol=htons(ETH_P_802_3);
 	addr.sll_hatype = 0;
 	addr.sll_pkttype = 0;
-	memcpy(addr.sll_addr,ethernet->ether_dhost,ETHER_ADDR_LEN);	
+	memcpy(addr.sll_addr, ethernet->ether_shost, ETHER_ADDR_LEN);
+    
+    print_payload(packet, header->caplen);
+    
 	if (bind(fd,(struct sockaddr *)&addr, sizeof(addr))==0){
 		printf("Bind succesful\n");
 	}
-	int n;	
-	if (n=send(fd,packet,sizeof(packet),0)<0) {
+	int n;
+	if ( n=send(fd,packet, header->len, 0) < 0) {
     		printf("%s",strerror(errno));
 	}
-	printf(" 	The packets sent size %d\n",n);
+	printf(" 	The packets sent size %d\n", header->len);
+    printf("%d\n", sizeof(struct sniff_ip));
 	return;
 }
 
