@@ -98,8 +98,8 @@ unsigned char * get_mac_address(char *ipaddress){
 	}	
 
 }
-int init_src_mac(char *device,struct arp_table *arp, struct ifreq ifr){
-	
+int init_src_mac(char *device,struct arp_table *arp){
+	struct ifreq ifr;
 	int arp_socket = -1;
 	arp_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     	if (arp_socket== -1) {
@@ -130,7 +130,7 @@ int init_src_mac(char *device,struct arp_table *arp, struct ifreq ifr){
         	arp->ether_dhost[i] = ifr.ifr_hwaddr.sa_data[i];
     	}
 	init_list(arp);
-	return 0;
+	return ifindex;
 }
 int get_arp_address(){
 	int arp_fd = -1;
@@ -150,14 +150,15 @@ int get_arp_address(){
     	struct arp_table *arp1=&arp; 
 	int i;	
 	int rvalue=-1;
-	rvalue = init_src_mac(DEVICE1,arp1,ifr);
+	int ifindex;
+	ifindex = init_src_mac(DEVICE1,arp1);
     	printf("Successfully got our MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
         arp1->ether_dhost[0],arp1->ether_dhost[1],arp1->ether_dhost[2],arp1->ether_dhost[3],arp1->ether_dhost[4],arp1->ether_dhost[5]);
-	if (rvalue==0)
+	if (ifindex>0)
 		MAC_MAP[0]=1;
 	rvalue = -1;
-	rvalue = init_src_mac(DEVICE2,arp1,ifr);
-	if (rvalue==0)
+	ifindex = init_src_mac(DEVICE2,arp1);
+	if (ifindex>0)
 		MAC_MAP[1]=1;
     	printf("Successfully got our MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
         arp1->ether_dhost[0],arp1->ether_dhost[1],arp1->ether_dhost[2],arp1->ether_dhost[3],arp1->ether_dhost[4],arp1->ether_dhost[5]);
@@ -185,7 +186,8 @@ int get_arp_address(){
 	memset(arp_head->arp_dha, 0 , (6 * sizeof(unsigned char)));
 	arp_head->arp_dpa = inet_addr(IP_ADDR3);
 	sa.sll_family = AF_PACKET;
-	sa.sll_ifindex = ifr.ifr_ifindex;
+	sa.sll_ifindex = ifindex;
+	printf("\n interface index %d",sa.sll_ifindex);
 	sa.sll_protocol = htons(ETH_P_ARP);
 	/* Send it! */
 	rvalue = sendto(arp_fd, arp_buffer, BUF_SIZE, 0,(struct sockaddr *)&sa, sizeof(sa));
