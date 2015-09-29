@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <errno.h>
 
-
+#define APP_NAME "arp"
 #define ETHER_TYPE_FOR_ARP 0x0806
 #define HW_TYPE_FOR_ETHER 0x0001
 #define OP_CODE_FOR_ARP_REQ 0x0001
@@ -49,6 +49,20 @@ struct linkedlist{
 };
 
 struct linkedlist *root;
+void
+print_usage(void)
+{
+
+        printf("Usage: %s [device][interface]\n", APP_NAME);
+        printf("\n");
+        printf("Options:\n");
+        printf("    interface    IP address of <interface> for MAC address\n");
+        printf("    device interface   IP address to send ARP packets\n");
+        printf("\n");
+
+return;
+}
+
 unsigned char *get_arp_address(char *ip_address, char *device);
 void init_list(struct arp_table *arp){
 	struct linkedlist* new_node = NULL;
@@ -217,35 +231,42 @@ unsigned char *get_arp_address(char *ip_address, char *device){
 		exit(1);
 	}
 	memcpy(mac_address,arp_head->arp_sha, (6 * sizeof(unsigned char)));
-	/*printf("TARGET MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+	printf("TARGET MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
                 mac_address[0],
                 mac_address[1],
                 mac_address[2],
                 mac_address[3],
                 mac_address[4],
                 mac_address[5]
-            );*/
+            );
 	close(arp_fd);
 	return mac_address;
 }
-int main (){
-	
-	root = NULL;
-	unsigned char *macad=NULL;
-	unsigned char *macaddress= (unsigned char *) malloc (sizeof(unsigned char)*6);
-	memset(macaddress,0,sizeof(unsigned char)*6);
-	
+int main (int argc, char **argv){
 	char *ipaddress=(char *)malloc(sizeof(char)*10);
 	char *device=(char *)malloc(sizeof(char) * 10);
-	memcpy(ipaddress,"10.1.2.3",sizeof("10.1.2.3"));
-	memcpy(device,"eth0",sizeof("eth0"));
+	unsigned char *macad=NULL;
+	unsigned char *macaddress= (unsigned char *) malloc (sizeof(unsigned char)*6);
+	if (argc < 3 || argc > 4) {
+                fprintf(stderr, "error: unrecognized command-line options\n\n");
+                print_usage();
+                exit(EXIT_FAILURE);
+        }
+        else if (argc ==3 ) {
+		memcpy(device,argv[1],strlen(argv[1]));
+		memcpy(ipaddress,argv[2],strlen(argv[2]));
+        }
+	printf("\n Device %s IPaddress %s",device,ipaddress);
+	root = NULL;
+	memset(macaddress,0,sizeof(unsigned char)*6);
+	
 	macad = get_mac_address(ipaddress);
 	if(macad==NULL){
-                macaddress = get_arp_address("10.1.2.3","eth3");
+                macaddress = get_arp_address(ipaddress,device);
                 if(macaddress!=NULL){
                         struct arp_table *arp=(struct arp_table *)malloc(sizeof(struct arp_table));
                         int i;
-                        arp->ip_addr = inet_addr("10.1.2.3");
+                        arp->ip_addr = inet_addr(ipaddress);
                         for (i = 0; i < 6; i++) {
                                 arp->ether_dhost[i] = macaddress[i];
                         }
@@ -261,7 +282,7 @@ int main (){
                 }
         }
 	memset(macaddress,0,sizeof(unsigned char)*6);
-	macad = get_mac_address("10.1.2.3");
+	macad = get_mac_address(ipaddress);
 	memcpy(macaddress,macad,sizeof(unsigned char)*6);
 	printf("TARGETlist  MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
                 macaddress[0],
