@@ -8,14 +8,10 @@
 #include <linux/if_packet.h>
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
+#include <netinet/in.h>
 #include <signal.h>
+#include <errno.h>
 
-#define DEVICE1 "eth2"
-#define DEVICE2 "eth3"
-#define IP_ADDR1 "10.10.1.2"
-#define IP_ADDR2 "10.1.2.1"
-#define IP_ADDR3 "10.1.2.3"
-#define IP_ADDR4 "10.1.2.4"
 
 #define ETHER_TYPE_FOR_ARP 0x0806
 #define HW_TYPE_FOR_ETHER 0x0001
@@ -26,7 +22,6 @@
 
 #define BUF_SIZE 42
 #define SIZE_ETHERNET 14
-int MAC_MAP [4]={0};
 struct ethernet {
         u_char  ether_dhost[ETHER_ADDR_LEN];    /* destination host address */
         u_char  ether_shost[ETHER_ADDR_LEN];    /* source host address */
@@ -54,6 +49,7 @@ struct linkedlist{
 };
 
 struct linkedlist *root;
+unsigned char *get_arp_address(char *ip_address, char *device);
 void init_list(struct arp_table *arp){
 	struct linkedlist* new_node = NULL;
 	struct linkedlist* cur_node = NULL;
@@ -83,19 +79,31 @@ void init_list(struct arp_table *arp){
 
 }
 
-unsigned char * get_mac_address(char *ipaddress){
+unsigned char *get_mac_address(char *ip_address){
 	struct linkedlist* cur_node = NULL;
+	unsigned char *mac_address=(unsigned char *) malloc (sizeof(unsigned char)*6);
+	memset(mac_address,0,sizeof(unsigned char)*6);
 	if(root==NULL){
 		printf("MAC table empty \n ");
-	}	
+	}
 	cur_node = root;
 	while (cur_node!=NULL){
 		printf("node ip %lu\n",cur_node->table.ip_addr);	
-		if (strcmp(inet_ntoa(cur_node->table.ip_addr),ipaddress)==0){
-			return cur_node->table.ether_dhost;
+		if (strcmp(inet_ntoa(cur_node->table.ip_addr),ip_address)==0){
+			memcpy(mac_address, cur_node->table.ether_dhost, (6 * sizeof(unsigned char)));
+			printf("TARGET in get mac MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                               mac_address[0],
+                               mac_address[1],
+                               mac_address[2],
+                               mac_address[3],
+                               mac_address[4],
+                               mac_address[5]
+                        );
+			return mac_address;
 		}
 		cur_node = cur_node->next;
-	}	
+	}
+	return NULL;	
 
 }
 int init_src_mac(char *device,struct arp_table *arp){
@@ -110,6 +118,7 @@ int init_src_mac(char *device,struct arp_table *arp){
 	printf("Device %s\n", device);
 	strcpy(ifr.ifr_name, device);
     	if (ioctl(arp_socket, SIOCGIFINDEX, &ifr) == -1) {
+    		close(arp_socket);
         	perror("SIOCGIFINDEX");
         	exit(1);
     	}
@@ -117,22 +126,27 @@ int init_src_mac(char *device,struct arp_table *arp){
    	printf("Successfully got interface index: %i\n", ifindex);  
 	/*retrieve corresponding MAC*/
     	if (ioctl(arp_socket, SIOCGIFHWADDR, &ifr) == -1) {
+    		close(arp_socket);
         	perror("SIOCGIFINDEX");
         	exit(1);
     	}
 	int i;
-	if (strcmp(device,DEVICE1)==0)
-		arp->ip_addr = inet_addr(IP_ADDR1);
-    	else
-		arp->ip_addr = inet_addr(IP_ADDR2);
-		
 	for (i = 0; i < 6; i++) {
         	arp->ether_dhost[i] = ifr.ifr_hwaddr.sa_data[i];
     	}
+	if (ioctl(arp_socket,SIOCGIFADDR,&ifr)==-1) {
+    		close(arp_socket);
+    		printf("%s\n",strerror(errno));
+		exit(1);
+	}
+	unsigned long addr;
+	addr = ((struct sockaddr_in *)(&ifr.ifr_addr))->sin_addr.s_addr;
+	arp->ip_addr = addr;		
 	init_list(arp);
+	close(arp_socket);
 	return ifindex;
 }
-int get_arp_address(){
+unsigned char *get_arp_address(char *ip_address, char *device){
 	int arp_fd = -1;
 	struct ifreq ifr;
 	void* arp_buffer = NULL;
@@ -145,21 +159,13 @@ int get_arp_address(){
     	struct arp_header *ah;
     	unsigned char src_mac[6];
     	struct sockaddr_ll socket_address;
-    	struct arp_table arp;
 	struct sockaddr_ll sa; 
-    	struct arp_table *arp1=&arp; 
+    	struct arp_table *arp1=(struct arp_table *)malloc(sizeof(struct arp_table));
+	unsigned char *mac_address = (unsigned char *)malloc(6); 
 	int i;	
 	int rvalue=-1;
 	int ifindex;
-	ifindex = init_src_mac(DEVICE1,arp1);
-    	printf("Successfully got our MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
-        arp1->ether_dhost[0],arp1->ether_dhost[1],arp1->ether_dhost[2],arp1->ether_dhost[3],arp1->ether_dhost[4],arp1->ether_dhost[5]);
-	if (ifindex>0)
-		MAC_MAP[0]=1;
-	rvalue = -1;
-	ifindex = init_src_mac(DEVICE2,arp1);
-	if (ifindex>0)
-		MAC_MAP[1]=1;
+	ifindex = init_src_mac(device,arp1);
     	printf("Successfully got our MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
         arp1->ether_dhost[0],arp1->ether_dhost[1],arp1->ether_dhost[2],arp1->ether_dhost[3],arp1->ether_dhost[4],arp1->ether_dhost[5]);
 	arp_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
@@ -181,10 +187,13 @@ int get_arp_address(){
 	arp_head->arp_hdl = HW_LEN_FOR_ETHER;
 	arp_head->arp_prl = HW_LEN_FOR_IP;
 	arp_head->arp_op = htons(OP_CODE_FOR_ARP_REQ);
-	memcpy(arp_head->arp_sha, arp1->ether_dhost, (6 * sizeof(unsigned char)));
+	//memcpy(arp_head->arp_sha, arp1->ether_dhost, (6 * sizeof(unsigned char)));
+	for (i = 0; i < 6; i++) {
+               arp_head->arp_sha[i] = arp1->ether_dhost[i];
+        }
 	arp_head->arp_spa = arp1->ip_addr;
 	memset(arp_head->arp_dha, 0 , (6 * sizeof(unsigned char)));
-	arp_head->arp_dpa = inet_addr(IP_ADDR3);
+	arp_head->arp_dpa = inet_addr(ip_address);
 	sa.sll_family = AF_PACKET;
 	sa.sll_ifindex = ifindex;
 	printf("\n interface index %d",sa.sll_ifindex);
@@ -197,46 +206,71 @@ int get_arp_address(){
 		close(arp_fd);
 		exit(1);
 	}
+	rvalue =-1;
+	memset(arp_buffer,0,BUF_SIZE);
+	rvalue = recvfrom(arp_fd, arp_buffer, BUF_SIZE, 0, NULL, NULL);
 	printf("\n return value %d ",rvalue);
-	return 0;
+	if( rvalue < 0 )
+	{
+		perror("recv_from");
+		close(arp_fd);
+		exit(1);
+	}
+	memcpy(mac_address,arp_head->arp_sha, (6 * sizeof(unsigned char)));
+	/*printf("TARGET MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                mac_address[0],
+                mac_address[1],
+                mac_address[2],
+                mac_address[3],
+                mac_address[4],
+                mac_address[5]
+            );*/
+	close(arp_fd);
+	return mac_address;
 }
 int main (){
-	/*unsigned char *ether_shost;
-	unsigned long ipaddress = inet_addr("10.1.2.2");
-	struct arp_table arp;
-	arp.ip_addr = ipaddress;
-	arp.ether_dhost[0]=0x00;
-        arp.ether_dhost[1]=0x15;
-        arp.ether_dhost[2]=0x17;
-        arp.ether_dhost[3]=0x57;
-        arp.ether_dhost[4]=0xbe;
-        arp.ether_dhost[5]=0xa0;
-	init_list(arp);
-	ipaddress = inet_addr("10.1.2.3");
-	arp.ip_addr = ipaddress;
-	arp.ether_dhost[0]=0x01;
-        arp.ether_dhost[1]=0x15;
-        arp.ether_dhost[2]=0x17;
-        arp.ether_dhost[3]=0x57;
-        arp.ether_dhost[4]=0xbe;
-        arp.ether_dhost[5]=0xa0;
-	init_list(arp);
-	ether_shost = get_mac_address("10.1.2.2");
-	printf("         Modified Destination Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ether_shost[0],
-                                                                        (unsigned char)ether_shost[1],
-                                                                        (unsigned char)ether_shost[2],
-                                                                        (unsigned char)ether_shost[3],
-                                                                        (unsigned char)ether_shost[4],
-                                                                        (unsigned char)ether_shost[5]);	
-	ether_shost = get_mac_address("10.1.2.3");
-	printf("         Modified Destination Mac Address %02x:%02x:%02x:%02x:%02x:%02x\n", (unsigned char)ether_shost[0],
-                                                                        (unsigned char)ether_shost[1],
-                                                                        (unsigned char)ether_shost[2],
-                                                                        (unsigned char)ether_shost[3],
-                                                                        (unsigned char)ether_shost[4],
-                                                                        (unsigned char)ether_shost[5]);	*/
 	
 	root = NULL;
-	get_arp_address();
+	unsigned char *macad=NULL;
+	unsigned char *macaddress= (unsigned char *) malloc (sizeof(unsigned char)*6);
+	memset(macaddress,0,sizeof(unsigned char)*6);
+	
+	char *ipaddress=(char *)malloc(sizeof(char)*10);
+	char *device=(char *)malloc(sizeof(char) * 10);
+	memcpy(ipaddress,"10.1.2.3",sizeof("10.1.2.3"));
+	memcpy(device,"eth0",sizeof("eth0"));
+	macad = get_mac_address(ipaddress);
+	if(macad==NULL){
+                macaddress = get_arp_address("10.1.2.3","eth3");
+                if(macaddress!=NULL){
+                        struct arp_table *arp=(struct arp_table *)malloc(sizeof(struct arp_table));
+                        int i;
+                        arp->ip_addr = inet_addr("10.1.2.3");
+                        for (i = 0; i < 6; i++) {
+                                arp->ether_dhost[i] = macaddress[i];
+                        }
+                        /*printf("TARGET MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                                arp->ether_dhost[0],
+                                arp->ether_dhost[1],
+                                arp->ether_dhost[2],
+                                arp->ether_dhost[3],
+                                arp->ether_dhost[4],
+                                arp->ether_dhost[5]
+                        );*/
+                  init_list(arp);
+                }
+        }
+	memset(macaddress,0,sizeof(unsigned char)*6);
+	macad = get_mac_address("10.1.2.3");
+	memcpy(macaddress,macad,sizeof(unsigned char)*6);
+	printf("TARGETlist  MAC address: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                macaddress[0],
+                macaddress[1],
+                macaddress[2],
+                macaddress[3],
+                macaddress[4],
+                macaddress[5]
+            );
+
 	return 0;
 }
