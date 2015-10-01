@@ -95,8 +95,6 @@ void *sniffer_thread(void *params) {
         
     }
     
-    
-    
     // Parse information to got_packet handler
     got_packet_param.sniff_interface = sniff_interface;
     got_packet_param.num_routes = num_routes;
@@ -157,7 +155,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
     
     size_ip_header = IP_HL(ip)*4;
-    if (size_ip_header < 20) {
+    if (unlikely(size_ip_header < 20)) {
         fprintf(stderr, "   * Invalid IP header length: %u bytes\n", size_ip_header);
         return;
     }
@@ -172,7 +170,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     // Decrease TTL
     ip->ip_ttl = ip->ip_ttl-1;
     
-    if (ip->ip_ttl == 0) {
+    if (unlikely(ip->ip_ttl == 0)) {
 
         // Send time exceeded icmp to the source
         icmp = (struct icmpheader *)(packet + SIZE_ETHERNET + size_ip_header);
@@ -197,7 +195,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
         memcpy(ethernet->ether_dhost, ethernet->ether_shost, ETHER_ADDR_LEN);
         memcpy(ethernet->ether_shost, sniff_interface->interface_macaddress, ETHER_ADDR_LEN);
         
-        if ((len = send(sniff_interface->sockfd, packet, SIZE_ETHERNET + size_ip_header + (SIZE_ICMP + size_ip_header + 8), 0)) < 0) {
+        if (unlikely((len = send(sniff_interface->sockfd, packet, SIZE_ETHERNET + size_ip_header + (SIZE_ICMP + size_ip_header + 8), 0)) < 0)) {
             fprintf(stderr, "Error: Cannot send ICMP time exceeded via %s to %s\n\n", sniff_interface->interface_name, ip_to_string(ip->ip_dst.s_addr));
             return;
         }
@@ -205,9 +203,9 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
         return;
         
     }
-    
+
     // Find the route that gives the longest prefix match
-    if (*(got_packet_param->num_routes == 1) {
+    if (*num_routes == 1) {
         route_match = &routes[0];
     }
     else {
@@ -236,11 +234,11 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     ip->ip_sum = ip_checksum((u_short *) (packet + SIZE_ETHERNET), size_ip_header);
     
     memcpy(ethernet->ether_shost, route_match->interface.interface_macaddress, ETHER_ADDR_LEN);
-    
+
     if (route_match->gateway == 0) {
         // The destination is in the network we connect to
         // Forward the packet to the destination (we need to know MAC addr of the destination)
-        if ((dst_macaddr = get_mac_address(arp_table_root, ip->ip_dst.s_addr, &route_match->interface)) != NULL) {
+        if (likely((dst_macaddr = get_mac_address(arp_table_root, ip->ip_dst.s_addr, &route_match->interface)) != NULL)) {
             memcpy(ethernet->ether_dhost, dst_macaddr, ETHER_ADDR_LEN);
         }
         else {
@@ -253,18 +251,20 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
         // The destination is in the network we don't connect to
         // Forward to the next hop gateway
         
-        if ((dst_macaddr = get_mac_address(arp_table_root, route_match->gateway, &route_match->interface)) != NULL) {
-            memcpy(ethernet->ether_dhost, dst_macaddr, ETHER_ADDR_LEN);
-        }
-        else {
-            fprintf(stderr, "Error: Cannot find MAC address of gateway IP %s\n\n", ip_to_string(route_match->gateway));
-            return;
-        }
+//        if (likely((dst_macaddr = get_mac_address(arp_table_root, route_match->gateway, &route_match->interface)) != NULL)) {
+//            memcpy(ethernet->ether_dhost, dst_macaddr, ETHER_ADDR_LEN);
+//        }
+//        else {
+//            fprintf(stderr, "Error: Cannot find MAC address of gateway IP %s\n\n", ip_to_string(route_match->gateway));
+//            return;
+//        }
+        
+        memcpy(ethernet->ether_dhost, route_match->gateway_macaddress, ETHER_ADDR_LEN);
         
     }
     
     // Forward modified packet via appropriate output interface
-    if ((len = send(route_match->interface.sockfd, packet, header->len, 0)) < 0) {
+    if (unlikely((len = send(route_match->interface.sockfd, packet, header->len, 0)) < 0)) {
         fprintf(stderr, "Error: Cannot send packet via %s to %s\n\n", route_match->interface.interface_name, ip_to_string(ip->ip_dst.s_addr));
         return;
     }
@@ -276,7 +276,7 @@ short num_prefix_match(uint32_t ip_destination, uint32_t route_destination, uint
     short i;
     uint32_t prefix_match = ntohl(~(route_destination ^ ip_destination) & route_netmask);
     for(i=0; i<32; i++) {
-        if ((0x80000000 & prefix_match) == 0) break;
+        if (unlikely((0x80000000 & prefix_match) == 0)) break;
         prefix_match <<= 1;
     }
     return i;

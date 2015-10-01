@@ -5,7 +5,7 @@ PTHREADFLAGS=-pthread
 PCAPFLAGS=-lpcap
 
 router: main.o interface.o utils.o config.o route.o arp.o sniffer.o
-	$(CC) $(CFLAGS) $(PTHREADFLAGS) $(PCAPFLAGS) -o router main.o interface.o utils.o config.o route.o arp.o sniffer.o
+	$(CC) $(CFLAGS) $(PTHREADFLAGS) -o router main.o interface.o utils.o config.o route.o arp.o sniffer.o $(PCAPFLAGS)
 
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c
@@ -26,7 +26,7 @@ arp.o: arp.c arp.h
 	$(CC) $(CFLAGS) -c arp.c
 
 sniffer.o: sniffer.c sniffer.h
-	$(CC) $(CFLAGS) $(PTHREADFLAGS) $(PCAPFLAGS) -c sniffer.c
+	$(CC) $(CFLAGS) $(PTHREADFLAGS) -c sniffer.c $(PCAPFLAGS) 
 
 clean:
 	rm -f *.o router

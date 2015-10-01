@@ -49,15 +49,15 @@ struct ethernet {
 
 struct __attribute__((packed)) arp_packet
 {
-    unsigned short arp_hd;
-    unsigned short arp_pr;
-    unsigned char arp_hdl;
-    unsigned char arp_prl;
-    unsigned short arp_op;
-    unsigned char arp_sha[6];
-    unsigned long arp_spa;
-    unsigned char arp_dha[6];
-    unsigned long arp_dpa;
+    uint16_t    arp_hd;
+    uint16_t    arp_pr;
+    u_char      arp_hdl;
+    u_char      arp_prl;
+    uint16_t    arp_op;
+    u_char      arp_sha[6];
+    uint32_t    arp_spa;
+    u_char      arp_dha[6];
+    uint32_t    arp_dpa;
 };
 
 struct arp_record {
