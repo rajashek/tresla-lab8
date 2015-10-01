@@ -33,6 +33,7 @@ struct interface {
     uint32_t interface_ipaddress;
     uint32_t interface_netmask;
     uint32_t interface_netaddress;
+    int      sockfd;
 };
 
 //void print_interfaces();

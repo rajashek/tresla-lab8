@@ -32,7 +32,7 @@ struct route {
     uint32_t gateway;
     u_char gateway_macaddress[6];
     struct interface interface;
-    int sockfd;
+//    int sockfd;
 };
 
 void fprintf_route(FILE *out, struct route *r);

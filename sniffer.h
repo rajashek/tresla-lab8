@@ -28,6 +28,7 @@
 #include <netinet/in.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <netinet/ip_icmp.h>
 
 #include <pthread.h>
 
@@ -38,6 +39,7 @@
 
 #define SNAP_LEN 1518
 #define SIZE_ETHERNET 14
+#define SIZE_ICMP 8
 
 #define _VERBOSE
 
@@ -65,6 +67,14 @@ struct sniff_ip {
 #define IP_HL(ip)               (((ip)->ip_vhl) & 0x0f)
 #define IP_V(ip)                (((ip)->ip_vhl) >> 4)
 
+struct icmpheader
+{
+    uint8_t type;
+    uint8_t code;
+    uint16_t checksum;
+    uint32_t rest;
+};
+
 struct sniffer_thread_parameter {
     struct interface *sniff_interface;
     int *num_routes;
@@ -73,6 +83,7 @@ struct sniffer_thread_parameter {
 };
 
 struct got_packet_parameter {
+    struct interface *sniff_interface;
     int *num_routes;
     struct route **routes;
     struct arp_linkedlist *arp_table_root;
