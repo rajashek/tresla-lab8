@@ -72,7 +72,7 @@ int main(int argc, const char * argv[]) {
      */
     
     // Increase the priority of the process (max priority is -20, min is 19)
-    if (setpriority(PRIO_PROCESS, 0, -15) < 0) {
+    if (setpriority(PRIO_PROCESS, 0, -20) < 0) {
         fprintf(stderr, "** It is recommend to run as a superuser! **\n");
     }
     

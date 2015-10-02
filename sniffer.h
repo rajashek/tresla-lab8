@@ -41,7 +41,7 @@
 #define SIZE_ETHERNET 14
 #define SIZE_ICMP 8
 
-#define _VERBOSE
+//#define _VERBOSE
 
 struct sniff_ethernet {
     u_char  ether_dhost[ETHER_ADDR_LEN];    /* destination host address */
